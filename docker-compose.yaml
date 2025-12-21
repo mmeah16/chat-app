@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: password
     ports:
-      - 5435:5432
+      - 5432:5432
     volumes:
       - pgdata:/var/lib/postgresql/data
     restart: on-failure:3
@@ -42,7 +42,11 @@ services:
       - postgres
       - redis
     environment:
-      DATABASE_URL: postgres://admin:password@postgres:5432/chat?sslmode=disable
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: admin
+      DB_PASSWORD: password
+      DB_NAME: chat
       REDIS_ADDR: redis:6379
       SERVICE_PORT: 8080
     ports:
