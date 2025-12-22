@@ -65,11 +65,13 @@ func login(ctx *gin.Context) {
 	user, err := repository.GetUserByEmail(db, req.Email)
 	if err != nil {
 		authFail(ctx, "user_not_found")
+		ctx.Set("auth_result", "failure")
 		return
 	}
 
 	if !utils.CheckPasswordHash(req.Password, user.PasswordHash) {
 		authFail(ctx, "invalid_password")
+		ctx.Set("auth_result", "failure")
 		return
 	}
 
@@ -81,9 +83,11 @@ func login(ctx *gin.Context) {
 			"reason", "user_not_found",
 			"request_id", ctx.GetString("request_id"),
 		)
+		ctx.Set("auth_result", "failure")
 		return
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{"message": "Login successful.", "token": token})
+	ctx.Set("auth_result", "success")
 }
 
