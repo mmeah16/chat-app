@@ -10,12 +10,11 @@ import (
 
 const secretKey = "supersecret"
 
-func GenerateToken(email string, userId uuid.UUID) (string, error) {
+func GenerateToken(userId uuid.UUID) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub": userId.String(),
 		"exp": time.Now().Add(time.Hour * 2).Unix(), 
 		"iat": time.Now().Unix(),
-		"email": email,
 	})
 
 	return token.SignedString([]byte(secretKey))

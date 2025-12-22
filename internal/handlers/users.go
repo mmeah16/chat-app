@@ -4,31 +4,28 @@ import (
 	"chat/internal/models"
 	"chat/internal/repository"
 	"chat/internal/utils"
-	"database/sql"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 func signup(ctx *gin.Context) {
-	var req models.AuthRequest
+	req, ok := bindAuth(ctx)
+	if !ok { return }
 
-	err := ctx.ShouldBindJSON(&req)
-
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "Invalid request data."})
-		return
-	}
-
-	dbAny, ok := ctx.Get("db")
-	if !ok {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "Database not available"})
-		return
-	}
-
-	db := dbAny.(*sql.DB)
+	db, ok := getDB(ctx)
+	if !ok { return }
 
 	hashedPassword, err := utils.HashPassword(req.Password) // hash the password before saving
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "Could not create new user."})
+		zap.S().Error("hashing error",
+			"error", err,
+			"request_id", ctx.GetString("request_id"),
+		)
+		return
+	}
 
 	user := &models.User{ 
 		Email: req.Email,
@@ -36,51 +33,54 @@ func signup(ctx *gin.Context) {
 	}
 
 	err = repository.CreateUser(db, user)
-
 	if err != nil {
+		if utils.IsUniqueViolation(err) {
+			ctx.JSON(http.StatusConflict, gin.H{"message": "User already exists."})
+			zap.S().Warn("signup failed",
+				"reason", "user_exists",
+				"request_id", ctx.GetString("request_id"),
+			)
+			return
+		}
+
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "Could not create new user."})
+		zap.S().Error("db error during signup",
+			"error", err,
+			"request_id", ctx.GetString("request_id"),
+		)
 		return
 	}
 
-	ctx.JSON(http.StatusCreated, gin.H{"message": "User created successfully.", "user_id": user.ID})
+
+	ctx.JSON(http.StatusCreated, gin.H{"message": "User created successfully."})
 }
 
 func login(ctx *gin.Context) {
-	var req models.AuthRequest
+	req, ok := bindAuth(ctx)
+	if !ok { return }
 
-	err := ctx.ShouldBindJSON(&req)
+	db, ok := getDB(ctx)
+	if !ok { return }
 
+	user, err := repository.GetUserByEmail(db, req.Email)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "Invalid request data."})
+		authFail(ctx, "user_not_found")
 		return
 	}
 
-	dbAny, ok := ctx.Get("db")
-	if !ok {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "Database not available"})
+	if !utils.CheckPasswordHash(req.Password, user.PasswordHash) {
+		authFail(ctx, "invalid_password")
 		return
 	}
 
-	db := dbAny.(*sql.DB)
-
-	existingUser, err := repository.GetUserByEmail(db, req.Email)
-
-	if err != nil {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "User with email and password not found."})
-		return
-	}
-
-	validPassword := utils.CheckPasswordHash(req.Password, existingUser.PasswordHash)
-
-	if !validPassword {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "Either email or password are incorrect."})
-		return
-	}
-
-	token, err := utils.GenerateToken(existingUser.Email, existingUser.ID)
+	token, err := utils.GenerateToken(user.ID)
 
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "Could not authenticate user."})
+		zap.S().Warn("could not generate token",
+			"reason", "user_not_found",
+			"request_id", ctx.GetString("request_id"),
+		)
 		return
 	}
 

@@ -4,31 +4,38 @@ import (
 	"chat/internal/config"
 	"chat/internal/db"
 	"chat/internal/handlers"
-	"log"
+	"chat/internal/middleware"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 func main() {
 
+	logger, _ := zap.NewProduction()
+	defer logger.Sync()
+
+	zap.ReplaceGlobals(logger)
+
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatalf("failed to load config: %v", err)
+		zap.S().Infow("failed to load config", "error", err)
 	}
-
-	log.Println(cfg.DBName)
 
   	database, err := db.Connect(cfg)
 	if err != nil {
-		log.Fatalf("failed to connect to database: %v", err)
+		zap.S().Fatalw("failed to connect to database", "error", err)
 	}
 	defer database.Close()
 	
-	// Create a Gin router with default middleware (logger and recovery)
-	r := gin.Default()
+	// Create a Gin router without default middleware (logger and recovery) since we use Zap instead
+	r := gin.New()
+	r.Use(gin.Recovery())
 
-	// Method 2: Use middleware to inject db
+	r.Use(middleware.RequestID())
+	r.Use(middleware.Logger())
+
 	r.Use(func(c *gin.Context) {
 		c.Set("db", database)
 		c.Next()
@@ -38,8 +45,8 @@ func main() {
 	r.GET("/health", healthCheck)
 
 	// Start server on port 8080 (default)
-	// Server will listen on 0.0.0.0:8080 (localhost:8080 on Windows)
-	handlers.RegisterRoutes(r) 
+	handlers.RegisterRoutes(r)
+
 	r.Run()
 }
 
