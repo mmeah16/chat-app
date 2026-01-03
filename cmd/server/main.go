@@ -48,7 +48,7 @@ func main() {
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	// Start server on port 8080 (default)
-	handlers.RegisterRoutes(r)
+	handlers.RegisterRoutes(r, database)
 
 	r.Run()
 }
