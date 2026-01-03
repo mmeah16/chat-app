@@ -11,6 +11,7 @@ CREATE TABLE conversations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   type TEXT NOT NULL CHECK (type IN ('dm', 'group')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  dm_key TEXT NOT NULL UNIQUE
 );
 
 CREATE TABLE conversation_members (
